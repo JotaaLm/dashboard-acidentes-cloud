@@ -9,9 +9,6 @@ import logging
 # ==============================================================================
 # 1. Configuração de Logs
 # ==============================================================================
-# No topo do seu app.py
-# Para ambiente local ou para o Streamlit Community Cloud, o básico é suficiente.
-# Para Azure Application Insights, você precisaria adicionar o código de integração aqui.
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ==============================================================================
@@ -35,50 +32,45 @@ if df_acidentes is not None:
         options=lista_ufs,
         default=lista_ufs
     )
-    logging.info(f"Filtro de UF selecionado: {uf_selecionada}")
-
-    # Filtro por Município
-    municipios_filtrados = df_acidentes[df_acidentes['uf'].isin(uf_selecionada)]['municipio'].unique() if uf_selecionada else df_acidentes['municipio'].unique()
-    lista_municipios = ['TODOS'] + sorted(municipios_filtrados)
-    municipio_selecionado = st.sidebar.selectbox(
-        "Selecione o Município:",
-        options=lista_municipios
-    )
-    logging.info(f"Filtro de Município selecionado: {municipio_selecionado}")
-
-
-    # Filtro por Mês
-    # Para garantir a ordem correta dos meses, filtramos pelos meses presentes nos dados
-    meses_disponiveis_df = df_acidentes[['mes_num', 'mes']].drop_duplicates().sort_values('mes_num')['mes'].tolist()
-
+    
+    # --- CORREÇÃO: Lógica mais robusta para ordenar e selecionar os meses ---
+    # Lista mestra de meses na ordem correta
+    ordem_meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+                   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+    
+    # Pega os meses que realmente existem nos dados
+    meses_nos_dados = df_acidentes['mes'].unique()
+    
+    # Ordena os meses disponíveis de acordo com a lista mestra
+    meses_disponiveis = sorted(meses_nos_dados, key=lambda m: ordem_meses.index(m))
+    
     mes_selecionado = st.sidebar.multiselect(
         "Selecione o Mês:",
-        options=meses_disponiveis_df,
-        default=meses_disponiveis_df
+        options=meses_disponiveis,
+        default=meses_disponiveis # Garante que todos os meses disponíveis comecem selecionados
     )
-    logging.info(f"Filtro de Mês selecionado: {mes_selecionado}")
 
-    # Filtro por Causa
+    # Filtro por Causa do Acidente
     lista_causas = ['TODAS'] + sorted(df_acidentes['causa_acidente'].unique())
     causa_selecionada = st.sidebar.selectbox(
         'Selecione a Causa do Acidente:',
         options=lista_causas
     )
-    logging.info(f"Filtro de Causa selecionado: {causa_selecionada}")
 
-    # --- Aplicação dos Filtros ---
+    # --- APLICAÇÃO DOS FILTROS ---
+    # Começa com uma cópia do dataframe original (já filtrado para 6 meses)
     df_filtrado = df_acidentes.copy()
 
+    # Aplica os filtros. Se uma seleção estiver vazia, o filtro não é aplicado.
     if uf_selecionada:
         df_filtrado = df_filtrado[df_filtrado['uf'].isin(uf_selecionada)]
-
-    if municipio_selecionado != 'TODOS':
-        df_filtrado = df_filtrado[df_filtrado['municipio'] == municipio_selecionado]
-
+    
+    # ALTERAÇÃO: Garante que o filtro de mês só seja aplicado se a seleção não estiver vazia
+    # Se 'mes_selecionado' estiver vazio, nenhum filtro de mês é aplicado, mostrando todos os dados disponíveis.
     if mes_selecionado:
         df_filtrado = df_filtrado[df_filtrado['mes'].isin(mes_selecionado)]
 
-    if causa_selecionada != 'TODOS':
+    if causa_selecionada != 'TODAS':
         df_filtrado = df_filtrado[df_filtrado['causa_acidente'] == causa_selecionada]
     
     logging.info(f"Dados filtrados. Total de registros após filtros: {len(df_filtrado)}")
@@ -100,16 +92,21 @@ if df_acidentes is not None:
 
 
     # --- Chamadas das Funções de Visualização ---
-    plotar_mapa(df_filtrado)
+    col_mapa, col_vazio = st.columns([2, 1]) # Cria colunas para o mapa não ocupar a tela toda
+    with col_mapa:
+        plotar_mapa(df_filtrado)
+
+    st.markdown("---")
 
     col_graf1, col_graf2 = st.columns(2)
     with col_graf1:
         plotar_acidentes_por_hora(df_filtrado)
+            
     with col_graf2:
         plotar_top_causas(df_filtrado)
-    
+            
+    # --- Exibição dos Dados Detalhados ---
     exibir_dados_detalhados(df_filtrado)
 
 else:
-    st.error("Não foi possível carregar os dados. Verifique o arquivo `data_processing.py` e o caminho/URL do arquivo CSV.")
-    logging.error("Falha no carregamento inicial dos dados.")
+    st.error("Não foi possível carregar os dados. Verifique o arquivo de origem.")
